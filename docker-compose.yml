@@ -1,0 +1,27 @@
+services:
+  ami-proxy:
+    build: ./proxy
+    restart: unless-stopped
+    environment:
+      AMI_HOST: ${AMI_HOST:-192.168.1.1}
+      AMI_PORT: ${AMI_PORT:-5038}
+      AMI_USER: ${AMI_USER:-admin}
+      AMI_SECRET: ${AMI_SECRET:-changeme}
+      WS_PORT: "3000"
+    networks:
+      - internal
+    # Do NOT expose port 3000 externally — nginx proxies /ws to it
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${LISTEN_PORT:-8080}:80"
+    depends_on:
+      - ami-proxy
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

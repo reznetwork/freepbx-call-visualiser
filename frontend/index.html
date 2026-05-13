@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FreePBX Call Visualiser</title>
+<style>
+:root{--bg:#f5f5f4;--surface:#fff;--s2:#f1efe8;--bd:rgba(0,0,0,.12);--bd2:rgba(0,0,0,.22);--tx:#1a1a18;--tx2:#5f5e5a;--tx3:#888780;--info:#185fa5;--info-bg:#e6f1fb;--ok:#0f6e56;--ok-bg:#e1f5ee;--warn:#854f0b;--warn-bg:#faeeda;--err:#a32d2d;--err-bg:#fcebeb;--pur:#534ab7;--pur-bg:#eeedfe;--cor:#993c1d;--cor-bg:#faece7;--r:8px;--rl:12px}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surface:#242422;--s2:#2c2c2a;--bd:rgba(255,255,255,.10);--bd2:rgba(255,255,255,.20);--tx:#e8e6df;--tx2:#9c9a92;--tx3:#5f5e5a;--info:#85b7eb;--info-bg:#0c447c;--ok:#5dcaa5;--ok-bg:#085041;--warn:#fac775;--warn-bg:#633806;--err:#f09595;--err-bg:#791f1f;--pur:#afa9ec;--pur-bg:#3c3489;--cor:#f0997b;--cor-bg:#712b13}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5}
+button{font-family:inherit;font-size:12px;padding:4px 10px;border:0.5px solid var(--bd2);border-radius:var(--r);background:var(--surface);color:var(--tx);cursor:pointer;transition:background .15s}
+button:hover{background:var(--s2)} button:active{transform:scale(.98)}
+button.active-btn{background:var(--info-bg);color:var(--info);border-color:var(--info)}
+input,select{font-family:inherit;font-size:12px;padding:4px 8px;border:0.5px solid var(--bd2);border-radius:var(--r);background:var(--surface);color:var(--tx)}
+.app{max-width:1100px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:0.5px solid var(--bd)}
+header h1{font-size:16px;font-weight:500;flex:1}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--err);flex-shrink:0;transition:background .3s}
+.dot.live{background:var(--ok);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+.bl{background:var(--ok-bg);color:var(--ok)} .bo{background:var(--s2);color:var(--tx3)} .be{background:var(--err-bg);color:var(--err)}
+.cfg{background:var(--surface);border:0.5px solid var(--bd);border-radius:var(--rl);padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--tx2)}
+.cfg input{width:130px} .cfg input.sm{width:60px}
+.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;border-bottom:0.5px solid var(--bd)}
+.tab{padding:8px 16px;font-size:13px;cursor:pointer;color:var(--tx2);border-bottom:2px solid transparent;margin-bottom:-0.5px}
+.tab.active{color:var(--tx);border-bottom-color:var(--info)} .tab:hover:not(.active){color:var(--tx)}
+.panel{display:none;flex-direction:column;gap:10px} .panel.active{display:flex}
+.sec{font-size:11px;font-weight:500;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em}
+.card{background:var(--surface);border:0.5px solid var(--bd);border-radius:var(--rl);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.grid3{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+@media(max-width:680px){.grid3{grid-template-columns:1fr}}
+@media(max-width:900px){.grid3{grid-template-columns:1fr}}
+
+/* Call cards */
+.call-card{border-left:3px solid var(--bd2);border-radius:0 var(--r) var(--r) 0;padding:8px 10px;cursor:pointer;background:var(--surface);transition:background .12s;margin-bottom:4px}
+.call-card:last-child{margin-bottom:0}
+.call-card:hover{background:var(--s2)}
+.call-card.s-up{border-left-color:#1D9E75} .call-card.s-ring{border-left-color:#EF9F27}
+.call-card.s-hold{border-left-color:#7F77DD} .call-card.s-ivr{border-left-color:#378ADD}
+.call-card.s-queue{border-left-color:#D85A30}
+.call-card.s-ended{border-left-color:var(--bd2);opacity:.7}
+.call-top{display:flex;align-items:center;gap:6px}
+.cnum{font-size:12px;font-weight:500;font-family:monospace;flex:1;color:var(--tx)}
+.ctimer{font-size:11px;font-family:monospace;color:var(--tx3)}
+
+/* Compact path (pill chain) */
+.prow{display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-top:3px}
+.pn{font-size:10px;padding:1px 5px;border-radius:3px;white-space:nowrap}
+.pn-trunk{background:var(--info-bg);color:var(--info)} .pn-ivr{background:var(--info-bg);color:var(--info)}
+.pn-queue{background:var(--cor-bg);color:var(--cor)} .pn-ext{background:var(--ok-bg);color:var(--ok)}
+.pn-vm{background:var(--pur-bg);color:var(--pur)} .pn-hold{background:var(--warn-bg);color:var(--warn)}
+.pnarr{color:var(--tx3);font-size:10px}
+
+/* Verbose hop trace inline */
+.hop-trace{margin-top:6px;padding-top:6px;border-top:0.5px solid var(--bd);display:flex;flex-direction:column}
+.hop-inline{display:flex;gap:0}
+.hi-left{display:flex;flex-direction:column;align-items:center;width:22px;flex-shrink:0}
+.hi-dot{width:9px;height:9px;border-radius:50%;margin-top:4px;flex-shrink:0;z-index:1}
+.hi-line{flex:1;width:2px;background:var(--bd);min-height:8px}
+.hi-last .hi-line{display:none}
+.hi-body{flex:1;padding:0 0 8px 8px}
+.hi-body.last{padding-bottom:2px}
+.hi-title{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.hi-type{font-size:11px;font-weight:500}
+.hi-name{font-size:11px;color:var(--tx2)}
+.hi-ts{font-size:10px;font-family:monospace;color:var(--tx3);margin-left:auto}
+.hi-dur{font-size:10px;padding:0px 4px;border-radius:3px;background:var(--s2);color:var(--tx3);font-family:monospace}
+.hi-details{margin-top:3px;background:var(--s2);border-radius:5px;padding:4px 8px;display:flex;flex-direction:column;gap:2px}
+.hi-drow{display:flex;gap:6px;font-size:10px}
+.hi-dk{color:var(--tx3);min-width:90px;flex-shrink:0}
+.hi-dv{font-family:monospace;color:var(--tx2);word-break:break-all}
+.hi-dv.ok{color:var(--ok)} .hi-dv.warn{color:var(--warn)} .hi-dv.err{color:var(--err)} .hi-dv.hl{color:var(--info)}
+
+/* Extensions */
+.ext-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+.ext-controls label{font-size:11px;color:var(--tx2)}
+.ext-controls input{width:110px;font-size:11px;padding:3px 6px}
+.ext-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:5px}
+/* Base tile — restore bordered card look */
+.ext-tile{border-radius:var(--r);padding:7px 8px 6px;cursor:default;border:0.5px solid var(--bd);background:var(--surface);transition:background .25s,border-color .25s}
+/* Status colours applied to whole tile */
+.ext-tile.st-idle{background:var(--s2);border-color:var(--bd)}
+.ext-tile.st-busy{background:#d4f0e2;border-color:#1D9E75}
+.ext-tile.st-ring{background:#fdf0d8;border-color:#EF9F27;animation:ring-pulse 1.2s infinite}
+.ext-tile.st-dnd{background:var(--s2);border-color:var(--bd);opacity:.45}
+.ext-tile.st-unavail{background:#fce8e8;border-color:#e0aaaa}
+@media(prefers-color-scheme:dark){
+  .ext-tile.st-idle{background:var(--s2);border-color:var(--bd)}
+  .ext-tile.st-busy{background:#0d3d25;border-color:#1D9E75}
+  .ext-tile.st-ring{background:#3d2200;border-color:#EF9F27}
+  .ext-tile.st-unavail{background:#2d0f0f;border-color:#6b2020}
+}
+@keyframes ring-pulse{0%,100%{border-color:#EF9F27}50%{border-color:#ffd080;background:#fff8e8}
+  @media(prefers-color-scheme:dark){50%{background:#4a2a00}}}
+.ext-num{font-size:12px;font-weight:600;color:var(--tx);line-height:1.2}
+.ext-name{font-size:10px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;min-height:14px}
+.ext-st-lbl{font-size:9px;margin-top:4px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+.ext-tile.st-busy .ext-st-lbl{color:#0d6e40}
+.ext-tile.st-ring .ext-st-lbl{color:#7a4500}
+.ext-tile.st-unavail .ext-st-lbl{color:#922}
+@media(prefers-color-scheme:dark){
+  .ext-tile.st-busy .ext-st-lbl{color:#5dcaa5}
+  .ext-tile.st-ring .ext-st-lbl{color:#fac775}
+  .ext-tile.st-unavail .ext-st-lbl{color:#e08080}
+}
+
+/* Trunks — vertical LED equaliser, 2-wide grid */
+.trunk-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-items:start}
+.trunk-col{display:flex;flex-direction:column;align-items:center;gap:3px}
+.trunk-leds{display:flex;flex-direction:column-reverse;gap:2px;width:100%}
+.trunk-led{height:5px;border-radius:2px;background:var(--s2);transition:background .3s}
+.trunk-led.on-low{background:#1D9E75}
+.trunk-led.on-mid{background:#EF9F27}
+.trunk-led.on-high{background:#D85A30}
+.trunk-col-name{font-size:10px;color:var(--tx2);text-align:center;word-break:break-word;line-height:1.3;width:100%}
+.trunk-col-count{font-size:11px;font-family:monospace;color:var(--tx3);text-align:center}
+.trunk-col-dot{width:7px;height:7px;border-radius:50%;background:var(--err);flex-shrink:0}
+.trunk-col-dot.up{background:var(--ok)}
+
+/* Trace tab */
+.clrow{display:flex;align-items:center;gap:8px;padding:8px 10px;border:0.5px solid var(--bd);border-radius:var(--r);cursor:pointer;transition:border-color .12s;background:var(--surface);margin-bottom:5px}
+.clrow:hover{border-color:var(--bd2)} .clrow.sel{border-color:var(--info);background:var(--info-bg)}
+.clrow.sel .clid{color:var(--info)}
+.clid{font-size:12px;font-weight:500;font-family:monospace;min-width:120px;color:var(--tx)}
+.clmeta{font-size:12px;color:var(--tx2);flex:1}
+.dbadge{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--s2);color:var(--tx2);font-family:monospace}
+.spill{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500;white-space:nowrap}
+.sp-up{background:var(--ok-bg);color:var(--ok)} .sp-ring{background:var(--warn-bg);color:var(--warn)}
+.sp-hold{background:var(--pur-bg);color:var(--pur)} .sp-ivr{background:var(--info-bg);color:var(--info)}
+.sp-queue{background:var(--cor-bg);color:var(--cor)} .sp-ended{background:var(--s2);color:var(--tx3)}
+.trace-card{background:var(--surface);border:0.5px solid var(--bd);border-radius:var(--rl);overflow:hidden}
+.trace-hdr{padding:10px 14px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.trace-meta{font-size:12px;color:var(--tx2);flex:1}
+.trace-body{padding:14px;display:flex;flex-direction:column}
+.hop{display:flex}
+.hop-left{display:flex;flex-direction:column;align-items:center;width:28px;flex-shrink:0}
+.hop-dot{width:11px;height:11px;border-radius:50%;margin-top:5px;position:relative;z-index:1;flex-shrink:0}
+.hop-line{flex:1;width:2px;background:var(--bd);min-height:10px}
+.hop-last .hop-line{display:none}
+.hop-body{flex:1;padding:0 0 14px 10px}
+.hop-body.last{padding-bottom:2px}
+.hop-title{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+.hop-type{font-size:12px;font-weight:500}
+.hop-name{font-size:12px;color:var(--tx2)}
+.hop-ts{font-size:11px;font-family:monospace;color:var(--tx3);margin-left:auto}
+.hop-details{background:var(--s2);border-radius:6px;padding:6px 10px;display:flex;flex-direction:column;gap:3px}
+.drow{display:flex;gap:6px;font-size:11px}
+.dk{color:var(--tx3);min-width:100px;flex-shrink:0}
+.dv{font-family:monospace;color:var(--tx2);word-break:break-all}
+.dv.ok{color:var(--ok)} .dv.warn{color:var(--warn)} .dv.err{color:var(--err)} .dv.hl{color:var(--info)}
+.raw-block{margin-top:4px;font-size:10px;font-family:monospace;color:var(--tx3);background:var(--bg);border-radius:4px;padding:5px 8px;white-space:pre-wrap;word-break:break-all;display:none}
+.raw-toggle{font-size:10px;color:var(--tx3);background:none;border:none;cursor:pointer;padding:2px 0 0;text-decoration:underline;font-family:inherit}
+
+/* Log */
+.log-area{background:var(--s2);border-radius:var(--r);padding:8px 10px;font-family:monospace;font-size:11px;height:220px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
+.log-line{display:flex;gap:8px} .log-ts{color:var(--tx3);flex-shrink:0} .log-msg{color:var(--tx2)}
+.log-msg.nc{color:var(--ok)} .log-msg.hup{color:var(--err)} .log-msg.br{color:var(--info)}
+.log-msg.warn{color:var(--warn)} .log-msg.prx{color:var(--pur)}
+.empty{font-size:12px;color:var(--tx3);text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>FreePBX call visualiser</h1>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2)">
+      <div class="dot" id="dot"></div><span id="conn-lbl">Disconnected</span>
+    </div>
+    <span class="badge bo" id="conn-badge">Offline</span>
+  </header>
+
+  <div class="cfg">
+    <span>WS host</span>
+    <input id="ws-host" value="" placeholder="auto"/>
+    <span>Port</span>
+    <input id="ws-port" class="sm" value=""/>
+    <button onclick="connectWS()">Connect</button>
+    <button onclick="disconnectWS()">Disconnect</button>
+    <span style="color:var(--tx3);margin-left:4px">Leave blank to use nginx /ws proxy</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="tab('live',this)">Live view</div>
+    <div class="tab" onclick="tab('trace',this)">Call trace</div>
+    <div class="tab" onclick="tab('log',this)">AMI log</div>
+  </div>
+
+  <!-- LIVE VIEW -->
+  <div class="panel active" id="panel-live">
+    <div class="toolbar">
+      <span class="sec" style="flex:1">Active calls &mdash; <span id="call-count">0</span> active, <span id="ended-count">0</span> recent</span>
+      <span style="font-size:12px;color:var(--tx2)">Path view:</span>
+      <button id="btn-mini" class="active-btn" onclick="setPathMode('mini')">Mini</button>
+      <button id="btn-compact" onclick="setPathMode('compact')">Compact</button>
+      <button id="btn-verbose" onclick="setPathMode('verbose')">Verbose</button>
+      <span style="font-size:12px;color:var(--tx2);margin-left:6px">Keep ended:</span>
+      <select id="keep-sel" onchange="renderCalls()">
+        <option value="30">30s</option>
+        <option value="120" selected>2 min</option>
+        <option value="300">5 min</option>
+        <option value="0">Forever</option>
+      </select>
+    </div>
+    <div class="card" id="calls-wrap">
+      <div id="calls-list"><div class="empty">No active calls</div></div>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <div class="sec">Extensions <span id="ext-count" style="font-weight:400;text-transform:none"></span></div>
+        <div class="ext-controls">
+          <input id="ext-search" placeholder="Search&hellip;" oninput="renderExt()"/>
+          <label>Extensions only</label>
+          <input type="checkbox" id="ext-users-only" onchange="renderExt()" checked/>
+        </div>
+        <div class="ext-grid" id="ext-grid"><div class="empty" style="padding:8px">Waiting for AMI data&hellip;</div></div>
+      </div>
+      <div class="card">
+        <div class="sec">SIP trunk usage</div>
+        <div id="trunk-list"><div class="empty" style="padding:8px">Waiting for AMI data&hellip;</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRACE VIEW -->
+  <div class="panel" id="panel-trace">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="sec" style="flex:1">All calls (active + recent)</div>
+      <select id="sort-sel" onchange="renderTrace()"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="longest">Longest</option></select>
+      <button onclick="globalRaw=!globalRaw;renderTrace()">Toggle raw AMI</button>
+    </div>
+    <div id="trace-list"><div class="empty">No calls yet</div></div>
+    <div class="sec">Routing trace</div>
+    <div class="trace-card">
+      <div id="trace-hdr"><div class="empty">Select a call to inspect its routing</div></div>
+      <div id="trace-body" class="trace-body" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- LOG VIEW -->
+  <div class="panel" id="panel-log">
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="sec" style="flex:1">AMI event stream</div>
+      <button onclick="logLines=[];renderLog()">Clear</button>
+    </div>
+    <div class="log-area" id="log-area"></div>
+  </div>
+</div>
+<script>
+const HC={trunk:'#378ADD',announce:'#7F77DD',ivr:'#378ADD',crm:'#1D9E75',condition:'#EF9F27',queue:'#D85A30',agent:'#1D9E75',voicemail:'#7F77DD',hold:'#EF9F27',transfer:'#D85A30',hangup:'#888780'};
+const HL={trunk:'SIP trunk',announce:'Announcement',ivr:'IVR menu',crm:'CRM lookup',condition:'Condition',queue:'Call queue',agent:'Agent answered',voicemail:'Voicemail',hold:'On hold',transfer:'Transfer',hangup:'Hangup'};
+
+let ws=null, calls={}, exts={}, trunks={}, logLines=[], selId=null, globalRaw=false, tickInt=null;
+let pathMode = 'compact'; // 'compact' | 'verbose'
+
+// ── Retention timer: schedule removal of ended calls ──────────────────────────
+const endedTimers = {};
+function scheduleRemoval(id) {
+  const keepSec = parseInt(document.getElementById('keep-sel').value, 10);
+  if (endedTimers[id]) clearTimeout(endedTimers[id]);
+  if (keepSec === 0) return; // keep forever
+  endedTimers[id] = setTimeout(() => {
+    delete calls[id];
+    delete endedTimers[id];
+    renderAll();
+  }, keepSec * 1000);
+}
+
+function setPathMode(m) {
+  pathMode = m;
+  ['mini','compact','verbose'].forEach(k=>{
+    document.getElementById('btn-'+k).className = m===k ? 'active-btn' : '';
+  });
+  renderCalls();
+}
+
+// ── Connection ────────────────────────────────────────────────────────────────
+function setConn(s){
+  const d=document.getElementById('dot'),l=document.getElementById('conn-lbl'),b=document.getElementById('conn-badge');
+  if(s==='live'){d.className='dot live';l.textContent='Connected';b.className='badge bl';b.textContent='Live'}
+  else if(s==='error'){d.className='dot';l.textContent='Error';b.className='badge be';b.textContent='Error'}
+  else{d.className='dot';l.textContent='Disconnected';b.className='badge bo';b.textContent='Offline'}
+}
+
+let reconnectTimer=null, manualDisconnect=false, reconnectDelay=2000;
+
+function connectWS(){
+  if(ws) { ws.onclose=null; ws.close(); ws=null; }
+  clearTimeout(reconnectTimer);
+  manualDisconnect=false;
+  const host=document.getElementById('ws-host').value.trim();
+  const port=document.getElementById('ws-port').value.trim();
+  let url = host ? 'ws://'+host+(port?':'+port:':3000') : (location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/ws';
+  addLog('Connecting to '+url,'prx');
+  try{
+    ws=new WebSocket(url);
+    ws.onopen=()=>{ reconnectDelay=2000; addLog('WebSocket open','prx'); requestAMIStatus(); };
+    ws.onmessage=e=>handleEvt(JSON.parse(e.data));
+    ws.onerror=()=>{ setConn('error'); addLog('WS error','hup'); };
+    ws.onclose=()=>{
+      setConn('off'); addLog('WS closed — reconnecting in '+(reconnectDelay/1000)+'s','prx');
+      if(!manualDisconnect){
+        reconnectTimer=setTimeout(()=>connectWS(), reconnectDelay);
+        reconnectDelay=Math.min(reconnectDelay*2, 30000); // exponential backoff, max 30s
+      }
+    };
+  } catch(e){ addLog('Failed: '+e.message,'hup'); }
+}
+function disconnectWS(){
+  manualDisconnect=true;
+  clearTimeout(reconnectTimer);
+  if(ws){ws.onclose=null;ws.close();ws=null}
+  setConn('off');
+  addLog('Disconnected manually','prx');
+}
+
+// Ask AMI for current extension states and active channels on connect
+function requestAMIStatus() {
+  sendAMI({action:'ExtensionStateList'});
+  sendAMI({action:'CoreShowChannels'});
+  sendAMI({action:'PJSIPShowEndpoints'});
+  sendAMI({action:'SIPshowpeers'});
+  sendAMI({action:'QueueStatus'});
+  // After extensions load, fetch details for names (slight delay to let list populate)
+  setTimeout(fetchExtensionNames, 1500);
+}
+
+function fetchExtensionNames() {
+  // Request PJSIP detail for each known extension to get CallerID names
+  Object.keys(exts).forEach(num => {
+    if(!isNonUserExt(num)) sendAMI({action:'PJSIPShowEndpoint', endpoint:num});
+  });
+}
+function sendAMI(obj) {
+  if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ── AMI event handling ────────────────────────────────────────────────────────
+function handleEvt(e){
+  if(e._type==='proxy'){
+    if(e.status==='authenticated'){setConn('live');addLog('AMI authenticated','prx');requestAMIStatus();}
+    else if(e.status==='auth_failed'){setConn('error');addLog('AMI auth failed: '+e.message,'hup')}
+    else if(e.status==='connected')addLog('AMI connected: '+e.banner,'prx');
+    else if(e.status==='disconnected'){setConn('off');addLog('AMI disconnected','prx')}
+    else if(e.status==='error')addLog('AMI error: '+e.message,'hup');
+    return;
+  }
+  const ev=e.Event||'';
+  if(ev) {
+    const detail = e.CallerIDNum||e.Channel||e.Peer||e.Endpoint||e.Variable||'';
+    const evType = ev==='Hangup'?'hup'
+      : ev.startsWith('New')||ev==='ExtensionStatus'?'nc'
+      : ev.startsWith('Bridge')||ev==='AgentConnect'?'br'
+      : ev==='VarSet'||ev==='Cdr'||ev==='Newexten'?''
+      : '';
+    addLog(ev+': '+detail, evType);
+  }
+
+  switch(ev){
+    // ── Extension status (from ExtensionStateList response + ongoing events) ──
+    case 'ExtensionStatus': {
+      const num = e.Exten, status = parseInt(e.Status,10);
+      // Status bitmask: 0=idle,1=inuse,2=busy,4=unavail,8=ringing,16=hold,32=inuse+ringing
+      const st = status===0?'idle':(status&8||status&32)?'ring':(status&1||status&2)?'busy':status===4?'unavail':'idle';
+      // StatusText is the human label FreePBX sometimes sends ("In Use", "Idle" etc) — not a name
+      // Name comes later from PJSIPShowEndpoint or QueueMember events
+      if(!exts[num]) exts[num]={num, name:'', status:'idle'};
+      exts[num].status = st;
+      renderExt();
+      break;
+    }
+
+    // PJSIP endpoint detail — has the friendly CallerID name
+    case 'EndpointDetail':
+    case 'AorDetail': {
+      const ep = e.ObjectName||'';
+      if(ep && exts[ep] && e.Callerid) {
+        // CallerID looks like '"Alice Smith" <102>'
+        const m = e.Callerid.match(/^"([^"]+)"/);
+        if(m && m[1] && m[1]!==ep) exts[ep].name = m[1];
+        renderExt();
+      }
+      break;
+    }
+    case 'ExtensionStateListComplete':
+      renderExt();
+      break;
+
+    // ── SIP peers → trunk detection ───────────────────────────────────────────
+    case 'PeerEntry': {
+      const peer = e.ObjectName||e.Channeltype&&(e.Channeltype+'/'+e.ObjectName)||e.Peer||'';
+      if(peer && !/^\d{2,6}$/.test(peer) && !peer.startsWith('*')) {
+        if(!trunks[peer]) trunks[peer]={name:peer, active:0, status:e.Status||''};
+        else trunks[peer].status = e.Status||'';
+        renderTrunks();
+      }
+      break;
+    }
+    case 'PeerlistComplete':
+    case 'EndpointListComplete':
+    case 'PeerlistComplete':
+      renderTrunks();
+      break;
+
+    // CoreShowChannels response — rebuild in-progress calls on connect
+    case 'CoreShowChannel': {
+      const ch = e.Channel||'';
+      if(ch.startsWith('Local/')) break;
+      const uid = e.Uniqueid;
+      if(!uid || calls[uid]) break;
+      const tr = gTrunk(ch);
+      if(tr) {
+        if(!trunks[tr]) trunks[tr]={name:tr, active:0, status:'active'};
+        trunks[tr].active++;
+        renderTrunks();
+      }
+      const cnum = e.CallerIDNum||'Unknown';
+      const cname = e.CallerIDName && e.CallerIDName!==cnum ? e.CallerIDName : '';
+      const rawDest = e.Exten||e.Application||'';
+      const dest = rawDest.startsWith('d') && /^d\d+$/.test(rawDest) ? rawDest.slice(1) : rawDest;
+      // Duration: e.Duration is "hh:mm:ss"
+      const durParts = (e.Duration||'0:0:0').split(':').map(Number);
+      const durMs = ((durParts[0]||0)*3600+(durParts[1]||0)*60+(durParts[2]||0))*1000;
+      calls[uid]={
+        id:uid, callerid:cnum, callerName:cname,
+        dest:dest, trunk:tr, channel:ch,
+        status: e.ChannelStateDesc==='Up'?'up':'ring',
+        startedAt: Date.now()-durMs, dur:0,
+        path:[{type:'trunk',label:tr||'?'}],
+        hops:[{type:'trunk',name:tr||ch,at:0,dur:0,
+          details:{Channel:ch,CallerID:cnum,Dest:dest,State:e.ChannelStateDesc||'',Duration:e.Duration||''},
+          raw:rawEvt(e)}]
+      };
+      addLog('Restored: '+cnum+' → '+dest+' ('+ch+')', 'prx');
+      renderAll();
+      break;
+    }
+    case 'CoreShowChannelsComplete':
+      renderAll();
+      break;
+
+    // Queue member list — populate extension names from queue members
+    case 'QueueMember': {
+      const ext = (e.Location||'').replace(/^SIP\//,'').replace(/-\S+$/,'');
+      if(ext && /^\d{2,6}$/.test(ext) && e.Name) {
+        if(!exts[ext]) exts[ext]={num:ext, name:e.Name, status:'idle'};
+        else if(!exts[ext].name) exts[ext].name = e.Name;
+        renderExt();
+      }
+      break;
+    }
+
+    // PJSIP endpoint list (chan_pjsip)
+    case 'EndpointList': {
+      // PJSIP endpoints — seed trunks for non-extension peers
+      const ep = e.ObjectName||e.Endpoint||'';
+      if(ep && ep.length>0 && !/^\d{2,6}$/.test(ep) && !ep.startsWith('*')) {
+        const ds = e.DeviceState||'';
+        if(!trunks[ep]) trunks[ep]={name:ep, active:0, status:ds};
+        else trunks[ep].status = ds;
+        renderTrunks();
+      }
+      break;
+    }
+
+    case 'ContactStatusDetail':
+    case 'AorDetail': {
+      // Additional PJSIP detail — update trunk status if known
+      const ep2 = e.EndpointName||e.ObjectName||'';
+      if(ep2 && trunks[ep2]) {
+        trunks[ep2].status = e.ContactStatus||e.Status||trunks[ep2].status;
+        renderTrunks();
+      }
+      break;
+    }
+
+    // ── New channel ───────────────────────────────────────────────────────────
+    case 'Newchannel': {
+      if(!e.Uniqueid || calls[e.Uniqueid]) break;
+      // Skip Local/ channels — they are internal legs, not the real call
+      if((e.Channel||'').startsWith('Local/')) break;
+      const tr = gTrunk(e.Channel);
+      if(tr) {
+        if(!trunks[tr]) trunks[tr]={name:tr, active:0, status:'active'};
+        trunks[tr].active++;
+        renderTrunks();
+      }
+      // Caller ID: prefer CallerIDName if it looks like a real name, else use number
+      const cnum = e.CallerIDNum||'Unknown';
+      const cname = e.CallerIDName && e.CallerIDName!==cnum ? e.CallerIDName : '';
+      // Destination: Exten may be a DID (d89990001) — clean it up for display
+      const rawDest = e.Exten||'';
+      const dest = rawDest.startsWith('d') && /^d\d+$/.test(rawDest) ? rawDest.slice(1) : rawDest;
+      calls[e.Uniqueid]={
+        id:e.Uniqueid, callerid:cnum, callerName:cname,
+        dest:dest, trunk:tr, channel:e.Channel,
+        status:'ring', startedAt:Date.now(), dur:0,
+        path:[{type:'trunk', label:tr||'?'}],
+        hops:[{type:'trunk', name:tr||e.Channel, at:0, dur:0,
+          details:{Channel:e.Channel, CallerID:cnum, DID:rawDest, State:e.ChannelStateDesc||''},
+          raw:rawEvt(e)}]
+      };
+      renderAll();
+      break;
+    }
+
+    case 'Newstate':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        const c=calls[e.Uniqueid];
+        const desc=e.ChannelStateDesc||'';
+        if(desc==='Ring'||desc==='Ringing'){c.status='ring'; updExt(e.Exten,'ring');}
+        else if(desc==='Up') c.status='up';
+        renderCalls();
+      }
+      break;
+
+    case 'AgentConnect': case 'Bridge': {
+      const uid = e.Uniqueid||e.Uniqueid1;
+      if(uid && calls[uid]){
+        const c = calls[uid]; c.status='up';
+        // MemberName: "PJSIP/904" → "904", or Channel2: "PJSIP/904-0000xxxx"
+        const raw_ag = e.MemberName||e.Channel2||'';
+        const ag = raw_ag.replace(/^(PJSIP|SIP)\//,'').replace(/-[0-9a-f]+$/i,'');
+        const agName = exts[ag] ? (exts[ag].name||ag) : ag;
+        pushHop(c,{type:'agent',name:(agName!==ag?agName+' ('+ag+')':ag),at:Date.now()-c.startedAt,dur:0,
+          details:{Extension:ag,Name:agName,Queue:e.Queue||'',
+            'Hold time':e.HoldTime?(e.HoldTime+'s'):'',Bridge:'simple_bridge'},raw:rawEvt(e)});
+        updExt(ag,'busy');
+        if(!c.path.find(p=>p.type==='ext'&&p.label===ag))
+          c.path.push({type:'ext',label:agName!==ag?agName:ag});
+        renderAll();
+      }
+      break;
+    }
+
+    case 'Join':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        const c=calls[e.Uniqueid]; c.status='queue';
+        const qname = e.Queue||'Queue';
+        // Update dest to show the queue
+        c.dest = qname;
+        // Remove any stale queue path node and re-add
+        if(!c.path.find(p=>p.type==='queue'&&p.label===qname))
+          c.path.push({type:'queue',label:qname});
+        pushHop(c,{type:'queue',name:'Queue '+qname,at:Date.now()-c.startedAt,dur:0,
+          details:{Queue:qname,'Position':e.Position,'Callers':e.Count,'Strategy':'ringall'},raw:rawEvt(e)});
+        renderAll();
+      }
+      break;
+
+    // Dial event fires when a channel dials another — catch trunk outbound calls
+    case 'Dial': {
+      if(e.SubEvent!=='Begin') break;
+      const uid = e.UniqueID||e.Uniqueid;
+      if(!uid || !calls[uid]) break;
+      const c = calls[uid];
+      const dest = e.DialString||e.Destination||'';
+      // Extract trunk from destination e.g. PJSIP/89260070093@Rotenstein_Engineering_MOBILON
+      const tm = dest.match(/(?:PJSIP|SIP)\/[^@]+@([^,]+)/);
+      if(tm && tm[1]) {
+        const trunkName = tm[1];
+        if(!c.path.find(p=>p.label===trunkName))
+          c.path.push({type:'trunk',label:trunkName});
+        if(!trunks[trunkName]) trunks[trunkName]={name:trunkName,active:0,status:'active'};
+        pushHop(c,{type:'trunk',name:'Dial via '+trunkName,at:Date.now()-c.startedAt,dur:0,
+          details:{Trunk:trunkName,Dialing:e.DialString||'',Caller:e.CallerIDNum||''},raw:rawEvt(e)});
+        renderAll();
+      }
+      break;
+    }
+
+    case 'Hold':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        const c=calls[e.Uniqueid]; c.status='hold';
+        c.path.push({type:'hold',label:'Hold'});
+        pushHop(c,{type:'hold',name:'On hold',at:Date.now()-c.startedAt,dur:0,details:{Channel:e.Channel},raw:rawEvt(e)});
+        renderAll();
+      }
+      break;
+
+    case 'Unhold':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        calls[e.Uniqueid].status='up'; renderCalls();
+      }
+      break;
+
+    case 'Hangup':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        const c=calls[e.Uniqueid];
+        pushHop(c,{type:'hangup',name:'Hangup (cause '+e.Cause+')',at:Date.now()-c.startedAt,dur:0,
+          details:{Cause:e.Cause,'Cause text':e['Cause-txt']||'',Duration:Math.round((Date.now()-c.startedAt)/1000)+'s',
+          'Final disposition': e.Cause==='16'?'Normal':'Abnormal ('+e.Cause+')'},raw:rawEvt(e)});
+        c.status='ended'; c.endedAt=Date.now();
+        if(c.trunk && trunks[c.trunk]) { trunks[c.trunk].active=Math.max(0,trunks[c.trunk].active-1); renderTrunks(); }
+        updExt(e.Exten,'idle');
+        scheduleRemoval(e.Uniqueid);
+        renderAll();
+      }
+      break;
+
+    case 'AGIExec':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        const c=calls[e.Uniqueid], cmd=e.Command||'';
+        const ht=cmd.includes('STREAM FILE')?'announce':cmd.toLowerCase().includes('crm')?'crm':'ivr';
+        const hopName = cmd.includes('STREAM FILE')
+          ? (cmd.split(' ')[2]||'').replace(/['"]/g,'')
+          : cmd.split(' ').slice(0,2).join(' ');
+        pushHop(c,{type:ht,name:hopName||cmd,at:Date.now()-c.startedAt,dur:0,
+          details:{Command:cmd,Result:e.Result||''},raw:rawEvt(e)});
+        renderAll();
+      }
+      break;
+
+    // VarSet — catch key routing variables FreePBX sets
+    case 'VarSet': {
+      const uid = e.Uniqueid;
+      if(!uid || !calls[uid]) break;
+      const c = calls[uid];
+      const v = e.Variable||'', val = e.Value||'';
+      // Queue routing
+      if(v==='MCQUEUE' && val && c.dest!==val) {
+        c.dest = val;
+        if(!c.path.find(p=>p.type==='queue'&&p.label===val))
+          c.path.push({type:'queue',label:'Q:'+val});
+        renderCalls();
+      }
+      // Time condition result
+      if(v==='DB(TC/1/INUSESTATE)') {
+        pushHop(c,{type:'condition',name:'Time condition',at:Date.now()-c.startedAt,dur:0,
+          details:{Result:val},raw:rawEvt(e)});
+      }
+      break;
+    }
+
+    case 'VoicemailEnd':
+      if(e.Uniqueid && calls[e.Uniqueid]){
+        const c=calls[e.Uniqueid];
+        c.path.push({type:'vm',label:'VM '+e.Mailbox});
+        pushHop(c,{type:'voicemail',name:'Voicemail '+e.Mailbox,at:Date.now()-c.startedAt,dur:0,
+          details:{Mailbox:e.Mailbox,Messages:e.MessageCount||''},raw:rawEvt(e)});
+        renderAll();
+      }
+      break;
+
+    case 'DTMFBegin':
+      if(e.Uniqueid && calls[e.Uniqueid] && e.Direction==='Received'){
+        const c=calls[e.Uniqueid];
+        const lastHop=c.hops[c.hops.length-1];
+        if(lastHop && (lastHop.type==='ivr'||lastHop.type==='announce')){
+          lastHop.details['DTMF received']=(lastHop.details['DTMF received']||'')+e.Digit;
+        }
+      }
+      break;
+  }
+}
+
+function rawEvt(e){return Object.entries(e).map(([k,v])=>k+': '+v).join('\r\n')}
+function gTrunk(ch){
+  if(!ch) return null;
+  if(ch.startsWith('DAHDI')) return 'ISDN PRI';
+  // PJSIP/TrunkName-xxxxxxxx  or  SIP/peername-xxxxxxxx
+  const m = ch.match(/^(?:PJSIP|SIP)\/([^-]+)-/);
+  if(m){
+    const peer = m[1];
+    // Pure digit names are extensions, not trunks
+    if(/^\d{2,6}$/.test(peer)) return null;
+    return peer;
+  }
+  // Local channels are internal — not trunks
+  if(ch.startsWith('Local/')) return null;
+  // Fallback: TECH/name-id
+  const m2 = ch.match(/^([A-Z]+)\/([^-]+)-/);
+  return m2 ? m2[2] : null;
+}
+function pushHop(call,h){const last=call.hops[call.hops.length-1];if(last&&!last.dur)last.dur=h.at-last.at;call.hops.push(h)}
+function updExt(ext,st){
+  if(!ext) return;
+  const n=(ext||'').replace(/^SIP\//,'').replace(/-\S+$/,'');
+  if(exts[n]){exts[n].status=st; renderExt();}
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderAll(){renderCalls();renderExt();renderTrunks();renderTrace()}
+function fmtDur(ms){const s=Math.round(ms/1000),m=Math.floor(s/60);return String(m).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function elapsed(ms){const s=Math.round(ms/1000);return s<60?s+'s':Math.floor(s/60)+'m '+(s%60)+'s'}
+
+function renderCalls(){
+  const el=document.getElementById('calls-list');
+  const cs=Object.values(calls);
+  const active=cs.filter(c=>c.status!=='ended');
+  const ended=cs.filter(c=>c.status==='ended');
+  document.getElementById('call-count').textContent=active.length;
+  document.getElementById('ended-count').textContent=ended.length;
+  if(!cs.length){el.innerHTML='<div class="empty">No active calls</div>';return}
+
+  // Sort: active first, then ended by endedAt desc
+  const sorted=[...active.sort((a,b)=>a.startedAt-b.startedAt), ...ended.sort((a,b)=>b.endedAt-a.endedAt)];
+
+  el.innerHTML=sorted.map(c=>{
+    const isEnded=c.status==='ended';
+    const pillCls=`sp-${c.status}`;
+    const endedLabel=isEnded?` &mdash; ended ${elapsed(Date.now()-c.endedAt)} ago`:'';
+
+    // Mini path — caller → last destination only, no pills, like v1 screenshot
+    const lastHop = c.path[c.path.length-1];
+    const miniPath = `<span style="font-size:11px;color:var(--tx3)">${
+      c.path.map((n,i)=>{
+        const icons={trunk:'&#x1F4DE;',ivr:'&#x2630;',queue:'&#x23F3;',ext:'&#x260F;',vm:'&#x2709;',hold:'&#x23F8;'};
+        return (i>0?'<span style="color:var(--tx3);font-size:10px;margin:0 3px">&#8250;</span>':'')+
+          `<span class="pn pn-${n.type}">${n.label}</span>`;
+      }).join('')
+    }</span>`;
+
+    // Compact path
+    const compactPath=c.path.map((n,i)=>(i>0?'<span class="pnarr">&#8250;</span>':'')+
+      `<span class="pn pn-${n.type}">${n.label}</span>`).join('');
+
+    // Verbose hop trace
+    const verboseTrace=c.hops.map((h,i)=>{
+      const isLast=i===c.hops.length-1, color=HC[h.type]||'#888780';
+      const hopTs=new Date(c.startedAt+h.at).toTimeString().slice(0,8);
+      const hopDur=h.dur>0?elapsed(h.dur):'';
+      const dets=Object.entries(h.details||{}).map(([k,v])=>{
+        const vs=String(v); let cls='hi-dv';
+        if(vs==='Yes'||vs.includes('Completed')||vs.includes('Normal'))cls='hi-dv ok';
+        else if(vs==='No'||vs.includes('Abnormal')||vs.includes('BUSY'))cls='hi-dv err';
+        else if(vs.includes('Gold')||vs.startsWith('\u2192'))cls='hi-dv hl';
+        else if(vs.includes('timeout')||vs.includes('Outside'))cls='hi-dv warn';
+        return`<div class="hi-drow"><span class="hi-dk">${k}</span><span class="${cls}">${v}</span></div>`;
+      }).join('');
+      return`<div class="hop-inline${isLast?' hi-last':''}">
+        <div class="hi-left"><div class="hi-dot" style="background:${color}"></div><div class="hi-line"></div></div>
+        <div class="hi-body${isLast?' last':''}">
+          <div class="hi-title">
+            <span class="hi-type" style="color:${color}">${HL[h.type]||h.type}</span>
+            <span class="hi-name">${h.name}</span>
+            ${hopDur?`<span class="hi-dur">${hopDur}</span>`:''}
+            <span class="hi-ts">${hopTs}</span>
+          </div>
+          ${dets?`<div class="hi-details">${dets}</div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+
+    const callerLabel=c.callerName&&c.callerName!=='Unknown'?`${c.callerName} &lt;${c.callerid}&gt;`:c.callerid;
+
+    return`<div class="call-card s-${c.status}" onclick="selCall('${c.id}')">
+      <div class="call-top">
+        <span class="cnum">${callerLabel} &rarr; ${c.dest}</span>
+        <span class="spill ${pillCls}">${c.status}</span>
+        <span class="ctimer" id="t-${c.id}">${fmtDur(Date.now()-c.startedAt)}</span>
+      </div>
+      ${isEnded?`<div style="font-size:10px;color:var(--tx3)">${endedLabel}</div>`:''}
+      ${pathMode==='mini'
+        ? `<div class="prow" style="margin-top:2px">${miniPath}</div>`
+        : pathMode==='compact'
+        ? `<div class="prow">${compactPath}</div>`
+        : `<div class="hop-trace">${verboseTrace}</div>`
+      }
+    </div>`;
+  }).join('');
+}
+
+function isNonUserExt(num) {
+  if(!num) return true;
+  if(num.startsWith('*') || num.startsWith('#')) return true;
+  const n = parseInt(num, 10);
+  if(n >= 70 && n <= 79) return true;   // parking slots
+  if(n >= 8500 && n <= 8599) return true; // feature code range
+  return false;
+}
+
+function renderExt(){
+  const el = document.getElementById('ext-grid');
+  let es = Object.values(exts);
+  const searchEl = document.getElementById('ext-search');
+  const filterEl = document.getElementById('ext-users-only');
+  const search = searchEl ? searchEl.value.toLowerCase() : '';
+  const usersOnly = filterEl ? filterEl.checked : true;
+
+  if(usersOnly) es = es.filter(e => !isNonUserExt(e.num));
+  if(search) es = es.filter(e => e.num.includes(search) || (e.name||'').toLowerCase().includes(search));
+
+  const visible = es.length, total = Object.values(exts).length;
+  const countEl = document.getElementById('ext-count');
+  if(countEl) countEl.textContent = total ? '('+visible+'/'+total+')' : '';
+
+  if(!es.length){
+    el.innerHTML = '<div class="empty" style="padding:8px">'+(total?'No match':'Waiting for AMI data…')+'</div>';
+    return;
+  }
+
+  const sorted = es.sort((a,b) => a.num.localeCompare(b.num, undefined, {numeric:true}));
+  el.innerHTML = sorted.map(e => {
+    const st = e.status==='busy' ? 'st-busy'
+             : e.status==='ring' ? 'st-ring'
+             : e.status==='dnd'  ? 'st-dnd'
+             : e.status==='unavail' ? 'st-unavail'
+             : 'st-idle';
+    const sl = e.status==='busy' ? 'In call'
+             : e.status==='ring' ? 'Ringing'
+             : e.status==='dnd'  ? 'DND'
+             : e.status==='unavail' ? 'Unavail'
+             : 'Idle';
+    const name = (e.name && !e.name.includes('/') && !e.name.includes('&') && !e.name.includes(':'))
+               ? e.name : '';
+    return `<div class="ext-tile ${st}" title="${e.num}${name?' — '+name:''}">` +
+           `<div class="ext-num">${e.num}</div>` +
+           `<div class="ext-name">${name}</div>` +
+           `<div class="ext-st-lbl">${sl}</div></div>`;
+  }).join('');
+}
+
+
+function renderTrunks(){
+  const el=document.getElementById('trunk-list');
+  const ts=Object.values(trunks);
+  if(!ts.length){el.innerHTML='<div class="empty" style="padding:8px;font-size:11px">Trunks appear here when calls<br>are made or on next connect</div>';return}
+  el.innerHTML='<div class="trunk-grid">'+ts.map(t=>{
+    const isUp=t.status.includes('OK')||t.status==='Reachable'||t.status===''||t.active>0;
+    const active=t.active||0;
+    const max=Math.max(t.max||TRUNK_MAX_LEDS, active, 1);
+    const filledLeds=Math.min(active,TRUNK_MAX_LEDS);
+    const leds=Array.from({length:TRUNK_MAX_LEDS},(_,i)=>{
+      const ledIdx=i; // 0=bottom
+      const lit=ledIdx<filledLeds;
+      const pct=(ledIdx/TRUNK_MAX_LEDS)*100;
+      const cls=lit?(pct>70?'on-high':pct>40?'on-mid':'on-low'):'';
+      return`<div class="trunk-led ${cls}"></div>`;
+    }).join('');
+    // Shorten name: strip common suffixes for display
+    const shortName=t.name.replace(/_MOBILON$/,'').replace(/_MANGO$/,'');
+    return`<div class="trunk-col">
+      <div class="trunk-col-count">${active}</div>
+      <div class="trunk-leds">${leds}</div>
+      <div class="trunk-col-dot ${isUp?'up':''}"></div>
+      <div class="trunk-col-name" title="${t.name}">${shortName}</div>
+    </div>`;
+  }).join('')+'</div>';
+}
+
+function addLog(msg,type=''){
+  const ts=new Date().toTimeString().slice(0,8);
+  logLines.unshift({ts,msg,type});
+  if(logLines.length>200)logLines.pop();
+  renderLog();
+}
+function renderLog(){
+  const el=document.getElementById('log-area');if(!el)return;
+  el.innerHTML=logLines.slice(0,100).map(l=>`<div class="log-line"><span class="log-ts">${l.ts}</span><span class="log-msg ${l.type}">${l.msg}</span></div>`).join('')||'<div class="empty">No events</div>';
+}
+
+// ── Trace tab ─────────────────────────────────────────────────────────────────
+function selCall(id){selId=id;tab('trace',document.querySelectorAll('.tab')[1]);renderTrace()}
+
+function renderTrace(){
+  const cs=Object.values(calls);
+  const sort=document.getElementById('sort-sel').value;
+  const sorted=[...cs].sort((a,b)=>sort==='oldest'?a.startedAt-b.startedAt:sort==='longest'?((b.endedAt||Date.now())-b.startedAt)-((a.endedAt||Date.now())-a.startedAt):b.startedAt-a.startedAt);
+  const tl=document.getElementById('trace-list');
+  tl.innerHTML=sorted.length?sorted.map(c=>`<div class="clrow${c.id===selId?' sel':''}" onclick="selId='${c.id}';renderTrace()">
+    <span class="clid">${c.callerid}</span>
+    <span class="clmeta">&rarr; ${c.dest} via ${c.trunk||'?'}</span>
+    <span class="spill sp-${c.status}">${c.status}</span>
+    <span class="dbadge">${elapsed((c.endedAt||Date.now())-c.startedAt)}</span>
+    <span style="font-size:11px;color:var(--tx3)">${(c.hops||[]).length} hops</span>
+  </div>`).join(''):'<div class="empty">No calls yet &mdash; connect to AMI</div>';
+
+  const call=selId&&calls[selId];
+  const hdr=document.getElementById('trace-hdr'),body=document.getElementById('trace-body');
+  if(!call){hdr.innerHTML='<div class="empty">Select a call to inspect its routing</div>';body.style.display='none';return}
+  const startStr=new Date(call.startedAt).toTimeString().slice(0,8);
+  hdr.innerHTML=`<div class="trace-hdr">
+    <span class="clid">${call.callerid}</span>
+    <span class="trace-meta">via ${call.trunk||'?'} &middot; started ${startStr} &middot; ${elapsed((call.endedAt||Date.now())-call.startedAt)} total</span>
+    <span class="spill sp-${call.status}">${call.status}</span>
+  </div>`;
+  const hops=call.hops||[];body.style.display=hops.length?'flex':'none';
+  if(!hops.length)return;
+  body.innerHTML=hops.map((h,i)=>{
+    const isLast=i===hops.length-1,color=HC[h.type]||'#888780';
+    const hopTs=new Date(call.startedAt+h.at).toTimeString().slice(0,8),hopDur=h.dur>0?elapsed(h.dur):'';
+    const dets=Object.entries(h.details||{}).map(([k,v])=>{
+      const vs=String(v);let cls='dv';
+      if(vs==='Yes'||vs.includes('Normal')||vs.includes('Completed'))cls='dv ok';
+      else if(vs==='No'||vs.includes('Abnormal')||vs.includes('BUSY'))cls='dv err';
+      else if(vs.includes('Gold')||vs.startsWith('\u2192'))cls='dv hl';
+      else if(vs.includes('timeout')||vs.includes('Outside'))cls='dv warn';
+      return`<div class="drow"><span class="dk">${k}</span><span class="${cls}">${v}</span></div>`;
+    }).join('');
+    const rawVis=globalRaw?'block':'none';
+    return`<div class="hop${isLast?' hop-last':''}">
+      <div class="hop-left"><div class="hop-dot" style="background:${color}"></div><div class="hop-line"></div></div>
+      <div class="hop-body${isLast?' last':''}">
+        <div class="hop-title">
+          <span class="hop-type" style="color:${color}">${HL[h.type]||h.type}</span>
+          <span class="hop-name">${h.name}</span>
+          ${hopDur?`<span class="dbadge">${hopDur}</span>`:''}
+          <span class="hop-ts">${hopTs}</span>
+        </div>
+        <div class="hop-details">${dets}</div>
+        <div class="raw-block" style="display:${rawVis}">${h.raw||''}</div>
+        <button class="raw-toggle" onclick="const r=this.previousElementSibling;r.style.display=r.style.display==='none'?'block':'none';this.textContent=r.style.display==='none'?'show raw AMI':'hide raw AMI'">show raw AMI</button>
+      </div>
+    </div>`;
+  }).join('')
+}
+
+function tab(n,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-'+n).classList.add('active');
+}
+
+// ── Tick timers ───────────────────────────────────────────────────────────────
+tickInt = setInterval(()=>{
+  Object.values(calls).forEach(c=>{
+    const el=document.getElementById('t-'+c.id);
+    if(el) el.textContent=fmtDur(Date.now()-c.startedAt);
+  });
+}, 1000);
+
+connectWS(); // auto-connect on load using nginx /ws proxy
+</script>
+</body>
+</html>

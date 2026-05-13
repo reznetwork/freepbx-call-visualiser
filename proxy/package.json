@@ -1,0 +1,9 @@
+{
+  "name": "freepbx-ami-proxy",
+  "version": "1.0.0",
+  "description": "WebSocket proxy bridging Asterisk AMI to the browser",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.17.0" },
+  "engines": { "node": ">=18" }
+}
